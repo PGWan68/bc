@@ -1,103 +1,211 @@
-// SPDX-License-Identifier: MIT
-// 系统集成测试脚本
+// 完整的集成测试脚本
+const { expect } = require("chai");
 
-async function main() {
-  // 获取Hardhat Runtime Environment
-  const hre = require('hardhat');
-  
-  console.log('开始系统集成测试...');
-  
-  try {
-    // 1. 连接到Hardhat网络
-    const signers = await hre.ethers.getSigners();
-    const owner = signers[0];
-    const user = signers[1];
-    
-    console.log('✓ 连接到Hardhat网络成功');
-    console.log('✓ 账户:', owner.address);
-    
-    // 2. 加载合约ABI和地址
-    const TestToken = await hre.ethers.getContractFactory('TestToken');
-    const SimpleDEX = await hre.ethers.getContractFactory('SimpleDEX');
-    
-    // 3. 获取已部署的合约
-    const ethToken = await TestToken.attach('0x5FbDB2315678afecb367f032d93F642f64180aa3');
-    const usdtToken = await TestToken.attach('0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512');
-    const daiToken = await TestToken.attach('0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0');
-    const dexContract = await SimpleDEX.attach('0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9');
-    
-    console.log('✓ 加载合约成功');
-    
-    // 4. 检查代币余额
-    const ownerEthBalance = await ethToken.balanceOf(owner.address);
-    const ownerUsdtBalance = await usdtToken.balanceOf(owner.address);
-    const ownerDaiBalance = await daiToken.balanceOf(owner.address);
-    
-    console.log('✓ 代币余额检查:');
-    console.log(`  - ETH: ${hre.ethers.utils.formatUnits(ownerEthBalance, 18)}`);
-    console.log(`  - USDT: ${hre.ethers.utils.formatUnits(ownerUsdtBalance, 18)}`);
-    console.log(`  - DAI: ${hre.ethers.utils.formatUnits(ownerDaiBalance, 18)}`);
-    
-    // 5. 测试代币转账
-    const transferAmount = hre.ethers.utils.parseUnits('100', 18);
-    
-    // 从owner转账给user
-    await ethToken.transfer(user.address, transferAmount);
-    await usdtToken.transfer(user.address, transferAmount);
-    
-    const userEthBalance = await ethToken.balanceOf(user.address);
-    const userUsdtBalance = await usdtToken.balanceOf(user.address);
-    
-    console.log('✓ 代币转账测试:');
-    console.log(`  - 用户ETH余额: ${hre.ethers.utils.formatUnits(userEthBalance, 18)}`);
-    console.log(`  - 用户USDT余额: ${hre.ethers.utils.formatUnits(userUsdtBalance, 18)}`);
-    
-    // 6. 测试DEX功能
-    // 用户批准DEX使用代币
-    const userEthContract = ethToken.connect(user);
-    const userUsdtContract = usdtToken.connect(user);
-    const userDexContract = dexContract.connect(user);
-    
-    await userEthContract.approve(dexContract.address, transferAmount);
-    await userUsdtContract.approve(dexContract.address, transferAmount);
-    
-    // 测试代币兑换
-    const swapAmount = hre.ethers.utils.parseUnits('10', 18);
-    const initialUserUsdtBalance = await userUsdtBalance;
-    
-    console.log('\n测试代币兑换功能...');
-    const swapTx = await userDexContract.swap(ethToken.address, usdtToken.address, swapAmount);
-    await swapTx.wait();
-    
-    const finalUserEthBalance = await userEthContract.balanceOf(user.address);
-    const finalUserUsdtBalance = await userUsdtContract.balanceOf(user.address);
-    
-    const ethSpent = hre.ethers.utils.formatUnits(swapAmount, 18);
-    const usdtReceived = hre.ethers.utils.formatUnits(finalUserUsdtBalance.sub(initialUserUsdtBalance), 18);
-    
-    console.log('✓ 代币兑换成功:');
-    console.log(`  - 消耗ETH: ${ethSpent}`);
-    console.log(`  - 获得USDT: ${usdtReceived}`);
-    console.log(`  - 最终ETH余额: ${hre.ethers.utils.formatUnits(finalUserEthBalance, 18)}`);
-    console.log(`  - 最终USDT余额: ${hre.ethers.utils.formatUnits(finalUserUsdtBalance, 18)}`);
-    
-    // 7. 获取当前价格
-    const price = await dexContract.getPrice(ethToken.address, usdtToken.address);
-    console.log(`\n✓ 当前ETH-USDT价格: ${hre.ethers.utils.formatUnits(price, 18)} USDT/ETH`);
-    
-    console.log('\n🎉 所有测试通过！系统集成测试完成。');
-    
-  } catch (error) {
-    console.error('✗ 测试失败:', error.message);
-    console.error(error.stack);
-    process.exit(1);
-  }
-}
+describe("SimpleDEX 完整集成测试", function () {
+  let token1, token2, token3, dex;
+  let owner, user;
+  let token1Address, token2Address, token3Address, dexAddress;
+  const decimals = 18;
 
-// 执行主函数
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
+  beforeEach(async function () {
+    // 部署合约
+    console.log("部署合约...");
+    
+    const [ownerSigner, userSigner] = await hre.ethers.getSigners();
+    owner = ownerSigner;
+    user = userSigner;
+
+    // 部署测试代币
+    const TestToken = await hre.ethers.getContractFactory("TestToken");
+    token1 = await TestToken.deploy("ETH Token", "ETH", hre.ethers.parseUnits('1000000', decimals));
+    token2 = await TestToken.deploy("USDT Token", "USDT", hre.ethers.parseUnits('100000000', decimals));
+    token3 = await TestToken.deploy("DAI Token", "DAI", hre.ethers.parseUnits('100000000', decimals));
+
+    await token1.waitForDeployment();
+    await token2.waitForDeployment();
+    await token3.waitForDeployment();
+
+    // 获取代币地址
+    token1Address = await token1.getAddress();
+    token2Address = await token2.getAddress();
+    token3Address = await token3.getAddress();
+
+    // 部署DEX合约
+    const SimpleDEX = await hre.ethers.getContractFactory("SimpleDEX");
+    dex = await SimpleDEX.deploy();
+    await dex.waitForDeployment();
+    dexAddress = await dex.getAddress();
+
+    console.log(`ETH Token (ETH): ${token1Address}`);
+    console.log(`USDT Token (USDT): ${token2Address}`);
+    console.log(`DAI Token (DAI): ${token3Address}`);
+    console.log(`SimpleDEX: ${dexAddress}`);
   });
+
+  describe("流动性池初始化", function () {
+    it("应该成功创建并初始化流动性池", async function () {
+      // 创建流动性池
+      await dex.createPool(token1, token2);
+      await dex.createPool(token1, token3);
+      await dex.createPool(token2, token3);
+
+      console.log("✓ 创建了所有流动性池");
+
+      // 添加流动性
+      const liquidityEth = hre.ethers.parseUnits('1000', decimals);
+      const liquidityUsdt = hre.ethers.parseUnits('200000', decimals);
+      const liquidityDai = hre.ethers.parseUnits('200000', decimals);
+
+      // ETH-USDT池
+      await token1.mint(owner.address, liquidityEth);
+      await token2.mint(owner.address, liquidityUsdt);
+      await token1.approve(dexAddress, liquidityEth);
+      await token2.approve(dexAddress, liquidityUsdt);
+      await dex.addLiquidity(token1, token2, liquidityEth, liquidityUsdt);
+
+      // ETH-DAI池
+      await token1.mint(owner.address, liquidityEth);
+      await token3.mint(owner.address, liquidityDai);
+      await token1.approve(dexAddress, liquidityEth);
+      await token3.approve(dexAddress, liquidityDai);
+      await dex.addLiquidity(token1, token3, liquidityEth, liquidityDai);
+
+      // USDT-DAI池
+      await token2.mint(owner.address, liquidityUsdt);
+      await token3.mint(owner.address, liquidityDai);
+      await token2.approve(dexAddress, liquidityUsdt);
+      await token3.approve(dexAddress, liquidityDai);
+      await dex.addLiquidity(token2, token3, liquidityUsdt, liquidityDai);
+
+      console.log("✓ 添加了所有流动性池的初始流动性");
+
+      // 检查流动性是否正确添加
+      const ethUsdtPool = await dex.getPool(token1Address, token2Address);
+      const ethDaiPool = await dex.getPool(token1Address, token3Address);
+      const usdtDaiPool = await dex.getPool(token2Address, token3Address);
+
+      expect(ethUsdtPool.token1Balance).to.equal(liquidityEth);
+      expect(ethUsdtPool.token2Balance).to.equal(liquidityUsdt);
+      expect(ethDaiPool.token1Balance).to.equal(liquidityEth);
+      expect(ethDaiPool.token2Balance).to.equal(liquidityDai);
+      expect(usdtDaiPool.token1Balance).to.equal(liquidityUsdt);
+      expect(usdtDaiPool.token2Balance).to.equal(liquidityDai);
+
+      console.log("✓ 验证了所有流动性池的初始流动性");
+    });
+  });
+
+  describe("代币交换功能", function () {
+    beforeEach(async function () {
+      // 初始化流动性池
+      await dex.createPool(token1, token2);
+      await dex.createPool(token1, token3);
+
+      // 添加流动性
+      const liquidityEth = hre.ethers.parseUnits('1000', decimals);
+      const liquidityUsdt = hre.ethers.parseUnits('200000', decimals);
+      const liquidityDai = hre.ethers.parseUnits('200000', decimals);
+
+      // ETH-USDT池
+      await token1.mint(owner.address, liquidityEth);
+      await token2.mint(owner.address, liquidityUsdt);
+      await token1.approve(dexAddress, liquidityEth);
+      await token2.approve(dexAddress, liquidityUsdt);
+      await dex.addLiquidity(token1, token2, liquidityEth, liquidityUsdt);
+
+      // ETH-DAI池
+      await token1.mint(owner.address, liquidityEth);
+      await token3.mint(owner.address, liquidityDai);
+      await token1.approve(dexAddress, liquidityEth);
+      await token3.approve(dexAddress, liquidityDai);
+      await dex.addLiquidity(token1, token3, liquidityEth, liquidityDai);
+
+      // 给测试账户添加测试代币
+      const testEth = hre.ethers.parseUnits('100', decimals);
+      const testUsdt = hre.ethers.parseUnits('10000', decimals);
+      const testDai = hre.ethers.parseUnits('10000', decimals);
+
+      await token1.mint(user.address, testEth);
+      await token2.mint(user.address, testUsdt);
+      await token3.mint(user.address, testDai);
+    });
+
+    it("应该成功交换ETH到USDT", async function () {
+      const amountIn = hre.ethers.parseUnits('10', decimals);
+      const expectedAmountOut = hre.ethers.parseUnits('1960', decimals); // 预期大约1960 USDT (1:200)
+
+      // 批准并交换
+      await token1.connect(user).approve(dexAddress, amountIn);
+      const tx = await dex.connect(user).swap(token1, token2, amountIn, expectedAmountOut);
+      await tx.wait();
+
+      // 检查余额变化
+      const userEthBalance = await token1.balanceOf(user.address);
+      const userUsdtBalance = await token2.balanceOf(user.address);
+
+      console.log(`✓ 用户ETH余额: ${hre.ethers.formatUnits(userEthBalance, decimals)} ETH`);
+      console.log(`✓ 用户USDT余额: ${hre.ethers.formatUnits(userUsdtBalance, decimals)} USDT`);
+
+      // 验证余额减少和增加
+      expect(userEthBalance).to.be.lessThan(hre.ethers.parseUnits('100', decimals));
+      expect(userUsdtBalance).to.be.greaterThan(hre.ethers.parseUnits('10000', decimals));
+    });
+
+    it("应该成功交换USDT到ETH", async function () {
+      const amountIn = hre.ethers.parseUnits('2000', decimals);
+      const expectedAmountOut = hre.ethers.parseUnits('9.8', decimals); // 预期大约9.8 ETH (1:200)
+
+      // 批准并交换
+      await token2.connect(user).approve(dexAddress, amountIn);
+      const tx = await dex.connect(user).swap(token2, token1, amountIn, expectedAmountOut);
+      await tx.wait();
+
+      // 检查余额变化
+      const userUsdtBalance = await token2.balanceOf(user.address);
+      const userEthBalance = await token1.balanceOf(user.address);
+
+      console.log(`✓ 用户USDT余额: ${hre.ethers.formatUnits(userUsdtBalance, decimals)} USDT`);
+      console.log(`✓ 用户ETH余额: ${hre.ethers.formatUnits(userEthBalance, decimals)} ETH`);
+
+      // 验证余额减少和增加
+      expect(userUsdtBalance).to.be.lessThan(hre.ethers.parseUnits('10000', decimals));
+      expect(userEthBalance).to.be.greaterThan(hre.ethers.parseUnits('100', decimals));
+    });
+  });
+
+  describe("价格获取功能", function () {
+    beforeEach(async function () {
+      // 初始化流动性池并添加流动性
+      await dex.createPool(token1, token2);
+
+      const liquidityEth = hre.ethers.parseUnits('1000', decimals);
+      const liquidityUsdt = hre.ethers.parseUnits('200000', decimals);
+
+      await token1.mint(owner.address, liquidityEth);
+      await token2.mint(owner.address, liquidityUsdt);
+      await token1.approve(dexAddress, liquidityEth);
+      await token2.approve(dexAddress, liquidityUsdt);
+      await dex.addLiquidity(token1, token2, liquidityEth, liquidityUsdt);
+    });
+
+    it("应该正确获取ETH-USDT价格", async function () {
+      const price = await dex.getPrice(token1, token2);
+      const formattedPrice = hre.ethers.formatUnits(price, decimals);
+      
+      console.log(`✓ 当前ETH-USDT价格: ${formattedPrice} USDT/ETH`);
+      
+      // 验证价格在合理范围内
+      expect(parseFloat(formattedPrice)).to.be.within(190, 210); // 应该在190-210之间
+    });
+
+    it("应该正确获取USDT-ETH价格", async function () {
+      const price = await dex.getPrice(token2, token1);
+      const formattedPrice = hre.ethers.formatUnits(price, decimals);
+      
+      console.log(`✓ 当前USDT-ETH价格: ${formattedPrice} ETH/USDT`);
+      
+      // 验证价格在合理范围内
+      expect(parseFloat(formattedPrice)).to.be.within(0.0045, 0.0055); // 应该在0.0045-0.0055之间
+    });
+  });
+});

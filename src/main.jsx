@@ -3,17 +3,8 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 
-// 模拟web3环境
-window.ethereum = {
-  request: async (args) => {
-    if (args.method === 'eth_requestAccounts') {
-      return ['0x742d35Cc6634C0532925a3b80152609BCd365714'];
-    }
-    return [];
-  },
-  on: () => {},
-  removeListener: () => {}
-};
+// 不再模拟window.ethereum对象，让应用直接连接到Hardhat本地网络
+// 用户需要确保在浏览器中安装了MetaMask等钱包扩展，并连接到本地网络
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

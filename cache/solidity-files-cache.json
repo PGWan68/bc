@@ -454,8 +454,8 @@
       ]
     },
     "/Users/jackey/Public/Repository/bc/contracts/TestToken.sol": {
-      "lastModificationDate": 1765019578621,
-      "contentHash": "f7aeedd240ae6e85249462ddec97e5ad",
+      "lastModificationDate": 1765076798537,
+      "contentHash": "40d902619c9766e50d1281ae33a8957d",
       "sourceName": "contracts/TestToken.sol",
       "solcConfig": {
         "version": "0.8.24",

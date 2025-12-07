@@ -49,27 +49,48 @@ async function main() {
   );
   console.log('Created USDT-DAI pool');
 
-  // 为每个池添加初始流动性
+  // 获取签名者
+  const [owner] = await hre.ethers.getSigners();
+  
+  // 为每个池添加初始流动性（考虑18位小数）
+  const decimals = 18;
+  const liquidityEth = hre.ethers.parseUnits('1000', decimals);
+  const liquidityUsdt = hre.ethers.parseUnits('200000', decimals);
+  const liquidityDai = hre.ethers.parseUnits('200000', decimals);
+
   // ETH-USDT池
-  await token1.mint(await dex.getAddress(), 1000);
-  await token2.mint(await dex.getAddress(), 200000);
+  await token1.mint(owner.address, liquidityEth);
+  await token2.mint(owner.address, liquidityUsdt);
+  await token1.approve(await dex.getAddress(), liquidityEth);
+  await token2.approve(await dex.getAddress(), liquidityUsdt);
+  await dex.addLiquidity(token1, token2, liquidityEth, liquidityUsdt);
   console.log('Added liquidity to ETH-USDT pool');
 
   // ETH-DAI池
-  await token1.mint(await dex.getAddress(), 1000);
-  await token3.mint(await dex.getAddress(), 200000);
+  await token1.mint(owner.address, liquidityEth);
+  await token3.mint(owner.address, liquidityDai);
+  await token1.approve(await dex.getAddress(), liquidityEth);
+  await token3.approve(await dex.getAddress(), liquidityDai);
+  await dex.addLiquidity(token1, token3, liquidityEth, liquidityDai);
   console.log('Added liquidity to ETH-DAI pool');
 
   // USDT-DAI池
-  await token2.mint(await dex.getAddress(), 200000);
-  await token3.mint(await dex.getAddress(), 200000);
+  await token2.mint(owner.address, liquidityUsdt);
+  await token3.mint(owner.address, liquidityDai);
+  await token2.approve(await dex.getAddress(), liquidityUsdt);
+  await token3.approve(await dex.getAddress(), liquidityDai);
+  await dex.addLiquidity(token2, token3, liquidityUsdt, liquidityDai);
   console.log('Added liquidity to USDT-DAI pool');
 
   // 给默认账户发送一些代币用于测试
   const accounts = await hre.ethers.getSigners();
-  await token1.mint(accounts[0].address, 100);
-  await token2.mint(accounts[0].address, 10000);
-  await token3.mint(accounts[0].address, 10000);
+  const testEth = hre.ethers.parseUnits('100', decimals);
+  const testUsdt = hre.ethers.parseUnits('10000', decimals);
+  const testDai = hre.ethers.parseUnits('10000', decimals);
+
+  await token1.mint(accounts[0].address, testEth);
+  await token2.mint(accounts[0].address, testUsdt);
+  await token3.mint(accounts[0].address, testDai);
 
   console.log('\n=== 部署完成 ===');
   console.log('使用以下命令启动前端:');

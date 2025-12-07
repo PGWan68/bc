@@ -34,25 +34,59 @@ function App() {
       setSuccessMessage('');
       
       // 检查是否有MetaMask或其他钱包
-      if (window.ethereum) {
-        // 请求账户访问权限
-        const accounts = await window.ethereum.request({
-          method: 'eth_requestAccounts'
-        });
-        
-        // 设置提供商和签名者
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const signer = provider.getSigner();
-        
-        setProvider(provider);
-        setSigner(signer);
-        setWalletAddress(accounts[0]);
-        setWalletConnected(true);
-        
-        // 初始化合约
+      if (!window.ethereum) {
+        setError('请安装MetaMask或其他Web3钱包');
+        return;
+      }
+      
+      // 请求账户访问权限
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts'
+      });
+      
+      if (!accounts || accounts.length === 0) {
+        setError('未获取到账户信息');
+        return;
+      }
+      
+      // 设置提供商和签名者
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      
+      // 尝试获取网络信息
+      let network;
+      try {
+        network = await provider.getNetwork();
+      } catch (networkError) {
+        console.warn('无法检测网络:', networkError);
+        // 继续执行，即使网络检测失败
+      }
+      
+      // 尝试获取签名者
+      let signer;
+      try {
+        signer = await provider.getSigner();
+      } catch (signerError) {
+        console.error('获取签名者失败:', signerError);
+        setError('获取签名者失败，请确保钱包已解锁');
+        return;
+      }
+      
+      setProvider(provider);
+      setSigner(signer);
+      setWalletAddress(accounts[0]);
+      setWalletConnected(true);
+      
+      // 初始化合约
+      try {
         await initializeContracts(provider, signer);
-        
-        // 监听账户变化
+      } catch (contractError) {
+        console.error('初始化合约失败:', contractError);
+        setError('初始化合约失败，请检查网络连接');
+        // 不返回，继续执行
+      }
+      
+      // 监听账户变化
+      if (window.ethereum.on) {
         window.ethereum.on('accountsChanged', (newAccounts) => {
           setWalletAddress(newAccounts[0]);
           setSigner(provider.getSigner());
@@ -62,8 +96,6 @@ function App() {
         window.ethereum.on('chainChanged', () => {
           window.location.reload();
         });
-      } else {
-        setError('请安装MetaMask或其他Web3钱包');
       }
     } catch (error) {
       console.error('连接钱包失败:', error);
